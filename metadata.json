@@ -1,0 +1,6 @@
+{
+  "name": "SandBox",
+  "description": "AI-powered job search aggregation and career tracking platform for Indian student developers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
