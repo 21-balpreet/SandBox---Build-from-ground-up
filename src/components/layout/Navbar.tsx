@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { Sparkles, Search, KanbanIcon, BarChart3, FileText, User as UserIcon, LogOut, Menu, X, Sun, Moon } from "lucide-react";
+import { isSupabaseConfigured } from "../../lib/supabase";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -41,6 +42,21 @@ export default function Navbar() {
               <Sparkles className="w-6 h-6 animate-pulse text-indigo-505 dark:text-indigo-400" />
               <span>Sand<span className="text-zinc-900 dark:text-white">Box</span></span>
             </Link>
+
+            {/* Supabase status badge */}
+            <div className="ml-3 hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950">
+              {isSupabaseConfigured ? (
+                <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                  Supabase Live
+                </span>
+              ) : (
+                <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 font-bold" title="VITE_SUPABASE_URL environment variable is missing on Vercel">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                  Local Fallback Mode
+                </span>
+              )}
+            </div>
             
             {user && (
               <div className="hidden md:ml-10 md:flex items-baseline space-x-4">
