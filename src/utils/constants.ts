@@ -10,13 +10,15 @@ export const INDIAN_CITIES = [
 ];
 
 export const APPLICATION_SOURCES = [
-  { value: "all", label: "All Sources" },
-  { value: "internshala", label: "Internshala" },
+  { value: "all", label: "All Job Platforms" },
+  { value: "linkedin", label: "LinkedIn Jobs" },
   { value: "naukri", label: "Naukri.com" },
-  { value: "indeed", label: "Indeed" },
-  { value: "linkedin", label: "LinkedIn" },
-  { value: "remotive", label: "Remotive" }
+  { value: "internshala", label: "Internshala" },
+  { value: "wellfound", label: "Wellfound (AngelList)" },
+  { value: "shine", label: "Shine.com" },
+  { value: "indeed", label: "Indeed India" }
 ];
+
 
 export const JOB_TYPES = [
   { value: "full-time", label: "Full Time" },

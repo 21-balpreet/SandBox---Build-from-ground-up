@@ -8,13 +8,18 @@ import { format, parseISO } from "date-fns";
 export const formatIndianSalary = (salaryStr?: string, jobType?: string): string => {
   if (!salaryStr) return "Not Specified";
   
+  // If already formatted (contains ₹ or LPA or / month)
+  if (salaryStr.includes("₹") || salaryStr.includes("LPA") || salaryStr.includes("/ month") || salaryStr.includes("-")) {
+    return salaryStr;
+  }
+
   // Clean string
   const cleaned = salaryStr.replace(/[^0-9]/g, "");
-  if (!cleaned) return salaryStr; // fallback if it has custom characters
+  if (!cleaned) return salaryStr;
   
   const num = parseInt(cleaned, 10);
   
-  if (jobType === "internship") {
+  if (jobType === "internship" || num < 100000) {
     return `₹${num.toLocaleString("en-IN")} / month`;
   }
   
@@ -25,6 +30,7 @@ export const formatIndianSalary = (salaryStr?: string, jobType?: string): string
   
   return `₹${num.toLocaleString("en-IN")}`;
 };
+
 
 /**
  * Formats a ISO date string to Indian DD/MM/YYYY format.

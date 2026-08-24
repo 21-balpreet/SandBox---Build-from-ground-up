@@ -2,9 +2,12 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { KanbanSquare, List, Calendar, Plus, Kanban, Trash2, Edit3, MessageSquare, Briefcase, CalendarClock, ChevronRight, ClipboardList } from "lucide-react";
+import { KanbanSquare, List, Calendar, Plus, Kanban, Trash2, Edit3, MessageSquare, Briefcase, CalendarClock, ChevronRight, ClipboardList, Database } from "lucide-react";
 import { APPLICATION_STATUSES, APPLICATION_TYPES } from "../utils/constants";
 import { formatDateIndian } from "../utils/formatters";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { toast } from "sonner";
+
 
 interface TrackedApp {
   id: string;
@@ -79,6 +82,91 @@ export default function Tracker() {
     }
   });
 
+  // Load & Auto-Sync applications with Supabase if configured
+  useEffect(() => {
+    async function loadSupabaseTracked() {
+      if (isSupabaseConfigured) {
+        try {
+          const { data: authData } = await supabase.auth.getUser();
+          const realUserId = authData?.user?.id || (user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id) ? user.id : null);
+
+          let query = supabase.from("tracked_applications").select("*");
+          if (realUserId) {
+            query = query.eq("user_id", realUserId);
+          }
+
+          const { data, error } = await query.order("created_at", { ascending: false });
+
+          if (!error && data && data.length > 0) {
+            const mapped: TrackedApp[] = data.map((item: any) => ({
+              id: item.id,
+              company: item.company,
+              role: item.role,
+              status: item.status,
+              type: item.type || "off-campus",
+              appliedDate: item.applied_date || new Date().toISOString().split("T")[0],
+              notes: item.notes || "",
+              referralName: item.referral_name || "",
+              driveDate: item.drive_date || ""
+            }));
+            setApps(mapped);
+          } else if (!error && (!data || data.length === 0) && apps.length > 0) {
+            // Table is empty in Supabase! Auto-push current local applications to Supabase
+            const rowsToInsert = apps.map(app => ({
+              id: app.id,
+              user_id: realUserId,
+              company: app.company,
+              role: app.role,
+              status: app.status,
+              type: app.type,
+              applied_date: app.appliedDate,
+              notes: app.notes || ""
+            }));
+
+            const { error: pushErr } = await supabase.from("tracked_applications").upsert(rowsToInsert);
+            if (!pushErr) {
+              console.log("Auto-populated empty Supabase tracked_applications table with local data!");
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to load/sync tracked apps from Supabase:", err);
+        }
+      }
+    }
+    loadSupabaseTracked();
+  }, [user]);
+
+  const handleManualSupabaseSync = async () => {
+    if (!isSupabaseConfigured) {
+      toast.error("Supabase is not configured yet. Check your .env file!");
+      return;
+    }
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const realUserId = authData?.user?.id || (user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id) ? user.id : null);
+
+      const rowsToInsert = apps.map(app => ({
+        id: app.id,
+        user_id: realUserId,
+        company: app.company,
+        role: app.role,
+        status: app.status,
+        type: app.type,
+        applied_date: app.appliedDate,
+        notes: app.notes || ""
+      }));
+
+      const { error } = await supabase.from("tracked_applications").upsert(rowsToInsert);
+      if (error) {
+        toast.error(`Sync error: ${error.message}`);
+      } else {
+        toast.success(`Successfully pushed ${apps.length} applications to Supabase!`);
+      }
+    } catch (err: any) {
+      toast.error(`Sync failed: ${err.message || err}`);
+    }
+  };
+
   // Sync state changes with localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(apps));
@@ -91,6 +179,7 @@ export default function Tracker() {
   const [manualLocation, setManualLocation] = useState("");
   const [appType, setAppType] = useState("off-campus");
   const [appStatus, setAppStatus] = useState("saved");
+
   
   // Stats
   const totalCount = apps.length;
@@ -102,18 +191,22 @@ export default function Tracker() {
   const rejectionRate = totalCount > 0 ? Math.round((rejectedCount / totalCount) * 100) : 0;
   const offerRate = totalCount > 0 ? Math.round((offeredCount / totalCount) * 100) : 0;
 
-  const handleAddApplication = (e: React.FormEvent) => {
+  const handleAddApplication = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualCompany || !manualTitle) return;
     
+    const newId = `app_${Date.now()}`;
+    const appliedDateStr = new Date().toISOString().split("T")[0];
+    const notesStr = manualLocation ? `Location: ${manualLocation}` : "";
+
     const newApp: TrackedApp = {
-      id: `app_${Date.now()}`,
+      id: newId,
       company: manualCompany,
       role: manualTitle,
       status: appStatus,
       type: appType,
-      appliedDate: new Date().toISOString().split("T")[0],
-      notes: manualLocation ? `Location: ${manualLocation}` : ""
+      appliedDate: appliedDateStr,
+      notes: notesStr
     };
 
     setApps(prev => [newApp, ...prev]);
@@ -121,15 +214,81 @@ export default function Tracker() {
     setManualCompany("");
     setManualTitle("");
     setManualLocation("");
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const realUserId = authData?.user?.id || (user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id) ? user.id : null);
+
+        const { error: insertErr } = await supabase.from("tracked_applications").insert({
+          id: newId,
+          user_id: realUserId,
+          company: manualCompany,
+          role: manualTitle,
+          status: appStatus,
+          type: appType,
+          applied_date: appliedDateStr,
+          notes: notesStr
+        });
+
+        if (insertErr) {
+          console.error("Failed to insert tracked application to Supabase:", insertErr);
+        }
+
+        // Also add to job_applications log if status is applied
+        if (appStatus === "applied") {
+          await supabase.from("job_applications").insert({
+            user_id: realUserId,
+            job_id: newId,
+            company: manualCompany,
+            role: manualTitle,
+            salary: "Standard Market CTC",
+            location: manualLocation || "India"
+          });
+        }
+      } catch (err) {
+        console.error("Failed to insert tracked application to Supabase:", err);
+      }
+    }
   };
 
-  const handleDeleteApp = (id: string) => {
+  const handleDeleteApp = async (id: string) => {
     setApps(prev => prev.filter(a => a.id !== id));
+    if (isSupabaseConfigured) {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const realUserId = authData?.user?.id || (user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id) ? user.id : null);
+
+        if (realUserId) {
+          await supabase.from("tracked_applications").delete().eq("id", id).eq("user_id", realUserId);
+        } else {
+          await supabase.from("tracked_applications").delete().eq("id", id);
+        }
+      } catch (err) {
+        console.error("Failed to delete application from Supabase:", err);
+      }
+    }
   };
 
-  const handleMoveStatus = (id: string, newStatus: string) => {
+  const handleMoveStatus = async (id: string, newStatus: string) => {
     setApps(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
+    if (isSupabaseConfigured) {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        const realUserId = authData?.user?.id || (user?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id) ? user.id : null);
+
+        if (realUserId) {
+          await supabase.from("tracked_applications").update({ status: newStatus }).eq("id", id).eq("user_id", realUserId);
+        } else {
+          await supabase.from("tracked_applications").update({ status: newStatus }).eq("id", id);
+        }
+      } catch (err) {
+        console.error("Failed to update status in Supabase:", err);
+      }
+    }
   };
+
+
 
   return (
     <div className="bg-zinc-950 text-zinc-100 flex-grow py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
@@ -140,13 +299,25 @@ export default function Tracker() {
           <p className="text-sm text-zinc-400 mt-1">Keep track of all your job applications, interviews, test assessments, and placement rounds in one clean space.</p>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-zinc-100 hover:bg-zinc-200 text-zinc-950 px-5 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 shadow-md cursor-pointer transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Application</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleManualSupabaseSync}
+            className="bg-zinc-900 hover:bg-zinc-800 text-indigo-400 border border-zinc-700 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 shadow-md cursor-pointer transition-all"
+            title="Sync local applications directly with Supabase database"
+          >
+            <Database className="w-4 h-4 text-indigo-400" />
+            <span>Sync with Supabase</span>
+          </button>
+
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-zinc-100 hover:bg-zinc-200 text-zinc-950 px-5 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 shadow-md cursor-pointer transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Application</span>
+          </button>
+        </div>
+
       </div>
 
       {/* Top Stats Band styled as exquisite Bento modules */}
